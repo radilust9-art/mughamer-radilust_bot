@@ -97,6 +97,9 @@ html[lang="ar"] body{font-family:"IBM Plex Sans Arabic","DM Sans",sans-serif}
 .burbuja a{color:var(--teal);text-decoration:underline;text-underline-offset:2px}
 .de-mi a{color:#1a1a1a}
 .burbuja strong{font-weight:700}
+/* listas dentro de un mensaje; padding-inline para que en arabe caigan al otro lado */
+.burbuja ul{margin:6px 0;padding-inline-start:20px}
+.burbuja li{margin:3px 0}
 .burbuja.arabe{font-family:"IBM Plex Sans Arabic","DM Sans",sans-serif}
 .aviso{
   align-self:center;max-width:92%;background:#fff5f5;border:1px solid #f3d4d4;color:#8a3b3b;
@@ -256,7 +259,7 @@ var IDIOMAS = {
     continuar: "Continuar",
     escribeme: "Escríbeme...",
     etiqueta: "Escribe tu mensaje",
-    bienvenida: "Salam, hola — soy Mughámer, el asistente de Radilust Experience.\n\nElige una opción o cuéntame lo que buscas.",
+    bienvenida: "Hola — soy Mughámer, el asistente de Radilust Experience.\n\nElige una opción o cuéntame lo que buscas.",
     atajos: [
       ["Próximos viajes",    "Ver los próximos viajes"],
       ["Viaje a mi medida",  "Quiero un viaje a mi medida"],
@@ -276,7 +279,7 @@ var IDIOMAS = {
     continuar: "Continuer",
     escribeme: "Écris-moi...",
     etiqueta: "Écris ton message",
-    bienvenida: "Salam, bonjour — je suis Mughámer, l'assistant de Radilust Experience.\n\nChoisis une option ou dis-moi ce que tu cherches.",
+    bienvenida: "Bonjour — je suis Mughámer, l'assistant de Radilust Experience.\n\nChoisis une option ou dis-moi ce que tu cherches.",
     atajos: [
       ["Prochains voyages",  "Voir les prochains voyages"],
       ["Voyage sur mesure",  "Je voudrais un voyage sur mesure"],
@@ -296,7 +299,7 @@ var IDIOMAS = {
     continuar: "Continue",
     escribeme: "Type your message...",
     etiqueta: "Type your message",
-    bienvenida: "Salam, hello — I'm Mughámer, the Radilust Experience assistant.\n\nPick an option or tell me what you're looking for.",
+    bienvenida: "Hello — I'm Mughámer, the Radilust Experience assistant.\n\nPick an option or tell me what you're looking for.",
     atajos: [
       ["Upcoming trips",    "Show me the upcoming trips"],
       ["Tailor-made trip",  "I'd like a tailor-made trip"],
@@ -392,6 +395,17 @@ function escapar(t){
 }
 function pintar(t){
   var s = escapar(t);
+  var guardados = [];
+
+  // 1) Enlaces con texto: [Ver el viaje](direccion).
+  //    Se apartan LOS PRIMEROS para que el paso 2 no vuelva a enlazar la direccion
+  //    que llevan dentro, que era lo que dejaba el corchete a la vista del cliente.
+  s = s.replace(/\[([^\]\n]{1,120})\]\(\s*(https?:\/\/[^\s)]+)\s*\)/g, function(m, texto, url){
+    guardados.push('<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + texto + '</a>');
+    return "\u0001" + (guardados.length - 1) + "\u0001";
+  });
+
+  // 2) Direcciones sueltas, correos y telefonos: pulsables solos.
   s = s.replace(/(https?:\/\/[^\s<]+[^\s<.,;:!?)\]"'])/g,
         '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
   s = s.replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})(?![^<]*<\/a>)/g,
@@ -399,8 +413,24 @@ function pintar(t){
   s = s.replace(/(\+34[\s.-]?\d{3}[\s.-]?\d{2}[\s.-]?\d{2}[\s.-]?\d{2})/g, function(n){
         return '<a href="tel:' + n.replace(/[\s.-]/g, "") + '">' + n + '</a>';
       });
+
+  // 3) Negrita.
   s = s.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
-  return s.replace(/\n/g, "<br>");
+
+  // 4) Listas: las lineas que empiezan por guion o punto gordo se agrupan en una lista
+  //    de verdad. Antes se veian los guiones tal cual.
+  var lineas = s.split("\n"), fuera = [], lista = null;
+  for (var i = 0; i < lineas.length; i++) {
+    var m = lineas[i].match(/^\s*[-\u2022]\s+(.*)$/);
+    if (m) { if (!lista) lista = []; lista.push("<li>" + m[1] + "</li>"); continue; }
+    if (lista) { fuera.push("<ul>" + lista.join("") + "</ul>"); lista = null; }
+    fuera.push(lineas[i]);
+  }
+  if (lista) fuera.push("<ul>" + lista.join("") + "</ul>");
+  s = fuera.join("<br>").replace(/<br>(<ul>)/g, "$1").replace(/(<\/ul>)<br>/g, "$1");
+
+  // 5) Los enlaces con texto vuelven a su sitio.
+  return s.replace(/\u0001(\d+)\u0001/g, function(m, i){ return guardados[Number(i)] || ""; });
 }
 
 /* De derecha a izquierda SOLO si el arabe es el idioma del mensaje.
