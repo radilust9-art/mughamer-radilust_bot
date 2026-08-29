@@ -124,6 +124,13 @@ html[lang="ar"] body{font-family:"IBM Plex Sans Arabic","DM Sans",sans-serif}
 /* El icono ocupa el sitio que ocupaba el numero */
 .atajo svg{width:17px;height:17px;flex:0 0 auto;color:var(--teal)}
 .atajo:hover svg{color:#0a6c85}
+/* marcado, cuando se pueden elegir varios */
+.atajo[aria-pressed="true"]{background:var(--oro);border-color:var(--oro);font-weight:500}
+.atajo[aria-pressed="true"] svg{color:#1a1a1a}
+/* el boton de seguir adelante */
+.atajo.seguir{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:500}
+.atajo.seguir:hover{background:#0a6c85;border-color:#0a6c85}
+.atajo.seguir:disabled{opacity:.45;cursor:not-allowed;background:var(--teal);border-color:var(--teal)}
 
 /* ---------- escribir ---------- */
 .escribir{
@@ -246,6 +253,7 @@ var IDIOMAS = {
     rotulo: "Español", dir: "ltr",
     subtitulo: "Asistente de Radilust Experience",
     reiniciar: "Empezar de nuevo",
+    continuar: "Continuar",
     escribeme: "Escríbeme...",
     etiqueta: "Escribe tu mensaje",
     bienvenida: "Salam, hola — soy Mughámer, el asistente de Radilust Experience.\n\nElige una opción o cuéntame lo que buscas.",
@@ -265,6 +273,7 @@ var IDIOMAS = {
     rotulo: "Français", dir: "ltr",
     subtitulo: "Assistant de Radilust Experience",
     reiniciar: "Recommencer",
+    continuar: "Continuer",
     escribeme: "Écris-moi...",
     etiqueta: "Écris ton message",
     bienvenida: "Salam, bonjour — je suis Mughámer, l'assistant de Radilust Experience.\n\nChoisis une option ou dis-moi ce que tu cherches.",
@@ -284,6 +293,7 @@ var IDIOMAS = {
     rotulo: "English", dir: "ltr",
     subtitulo: "Radilust Experience assistant",
     reiniciar: "Start over",
+    continuar: "Continue",
     escribeme: "Type your message...",
     etiqueta: "Type your message",
     bienvenida: "Salam, hello — I'm Mughámer, the Radilust Experience assistant.\n\nPick an option or tell me what you're looking for.",
@@ -303,6 +313,7 @@ var IDIOMAS = {
     rotulo: "العربية", dir: "rtl",
     subtitulo: "مساعد Radilust Experience",
     reiniciar: "البدء من جديد",
+    continuar: "متابعة",
     escribeme: "اكتب لي...",
     etiqueta: "اكتب رسالتك",
     bienvenida: "السلام عليكم — أنا مغامر، مساعد Radilust Experience.\n\nاختر أحد الخيارات أو أخبرني بما تبحث عنه.",
@@ -468,6 +479,75 @@ function aplicarIdioma(){
   ponerIdiomas();
 }
 
+/* ============================================================
+   BOTONES QUE PROPONE EL ASISTENTE
+   Termina su mensaje con una linea como
+       [[OPCIONES: Voy solo/a y comparto | Vamos dos, doble | Individual]]
+       [[VARIAS: Traslados | Dieta especial | Nada mas]]
+   La pagina la convierte en botones y la BORRA del texto.
+   Si por lo que sea no la entiende, la borra igual: el cliente no puede leer
+   nunca nada que parezca codigo. Y quien prefiera escribir a mano, escribe.
+   ============================================================ */
+var MARCADOR = /\[\[\s*(OPCIONES|VARIAS)\s*:([^\]]*)\]\]/i;
+
+function sacarOpciones(texto){
+  var t = String(texto || "");
+  var m = t.match(MARCADOR);
+  var limpio = t
+    .replace(/\[\[[\s\S]*?\]\]/g, "")   // cualquier marca entera, este donde este
+    .replace(/\[\[[\s\S]*$/, "")          // una marca a medio escribir al final
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  if (!m) return { texto: limpio, opciones: null, varias: false };
+  var lista = m[2].split("|").map(function(x){ return x.trim(); }).filter(Boolean);
+  if (!lista.length) return { texto: limpio, opciones: null, varias: false };
+  return { texto: limpio, opciones: lista, varias: m[1].toUpperCase() === "VARIAS" };
+}
+
+function botonesDelMensaje(lista, varias){
+  quitarAtajos();
+  var caja = document.createElement("div");
+  caja.className = "atajos"; caja.id = "atajos";
+
+  if (!varias) {
+    lista.forEach(function(t){
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "atajo"; b.textContent = t;
+      b.addEventListener("click", function(){ quitarAtajos(); enviar(t); });
+      caja.appendChild(b);
+    });
+  } else {
+    var elegidas = [];
+    var seguir = document.createElement("button");
+    lista.forEach(function(t){
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "atajo"; b.textContent = t;
+      b.setAttribute("aria-pressed", "false");
+      b.addEventListener("click", function(){
+        var i = elegidas.indexOf(t);
+        if (i >= 0) { elegidas.splice(i, 1); b.setAttribute("aria-pressed", "false"); }
+        else        { elegidas.push(t);      b.setAttribute("aria-pressed", "true"); }
+        seguir.disabled = elegidas.length === 0;
+      });
+      caja.appendChild(b);
+    });
+    seguir.type = "button"; seguir.className = "atajo seguir";
+    seguir.textContent = T().continuar; seguir.disabled = true;
+    seguir.addEventListener("click", function(){ quitarAtajos(); enviar(elegidas.join(", ")); });
+    caja.appendChild(seguir);
+  }
+  conversacion.appendChild(caja);
+  abajo();
+}
+
+/* Todo lo que dice Mughamer pasa por aqui: se limpia y, si propone opciones,
+   se pintan como botones debajo. */
+function mostrarDeMughamer(texto){
+  var r = sacarOpciones(texto);
+  if (r.texto) burbuja(r.texto, "el");
+  if (r.opciones) botonesDelMensaje(r.opciones, r.varias);
+}
+
 /* ---- el menu, justo debajo del saludo ---- */
 function ponerAtajos(){
   quitarAtajos();
@@ -530,7 +610,7 @@ async function enviar(texto){
     var datos; try { datos = JSON.parse(crudo); } catch (e) { datos = crudo; }
     puntos.remove();
     var respuesta = sacarTexto(datos);
-    if (r.ok && respuesta) { burbuja(respuesta, "el"); } else { avisoDeFallo(); }
+    if (r.ok && respuesta) { mostrarDeMughamer(respuesta); } else { avisoDeFallo(); }
   } catch (e) {
     puntos.remove();
     avisoDeFallo();
